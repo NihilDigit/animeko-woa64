@@ -87,11 +87,11 @@ jobs:
         if: ${{ inputs.run_anitorrent }}
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifacts\anitorrent | Out-Null
+          New-Item -ItemType Directory -Force -Path artifacts/anitorrent | Out-Null
           gh run download "${{ steps.anitorrent.outputs.run_id }}" `
             --repo $env:ANITORRENT_REPO `
             --name anitorrent-windows-arm64 `
-            --dir artifacts\anitorrent
+            --dir artifacts/anitorrent
 
       - name: Trigger mediamp CI
         id: mediamp
@@ -108,19 +108,19 @@ jobs:
         if: ${{ inputs.run_mediamp }}
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifacts\mediamp | Out-Null
+          New-Item -ItemType Directory -Force -Path artifacts/mediamp | Out-Null
           gh run download "${{ steps.mediamp.outputs.run_id }}" `
             --repo $env:MEDIAMP_REPO `
             --name mediamp-ffmpeg-runtime-windows-arm64 `
-            --dir artifacts\mediamp
+            --dir artifacts/mediamp
 
       - name: Prepare mocked Maven repository
         if: ${{ inputs.run_anitorrent && inputs.run_mediamp }}
         shell: pwsh
         run: |
-          .\.github\workflows\scripts\prepare-mock-maven.ps1 `
-            -AnitorrentArtifacts artifacts\anitorrent `
-            -MediampArtifacts artifacts\mediamp `
+          ./.github/workflows/scripts/prepare-mock-maven.ps1 `
+            -AnitorrentArtifacts artifacts/anitorrent `
+            -MediampArtifacts artifacts/mediamp `
             -OutputDirectory .mock-maven `
             -AnitorrentVersion "${{ inputs.anitorrent_version }}" `
             -MediampVersion "${{ inputs.mediamp_version }}"
