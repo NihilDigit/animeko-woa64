@@ -160,7 +160,9 @@ jobs:
             -Repo $env:ANIMEKO_REPO `
             -Workflow $env:WORKFLOW_FILE `
             -Ref "${{ inputs.animeko_ref }}" `
-            -Field "mock_maven_repo=${{ github.repository }}" `
-            -Field "mock_maven_run_id=${{ github.run_id }}" `
-            -Field "mock_maven_artifact=$env:MOCK_MAVEN_ARTIFACT"
+            -Field @(
+              "mock_maven_repo=${{ github.repository }}",
+              "mock_maven_run_id=${{ github.run_id }}",
+              "mock_maven_artifact=$env:MOCK_MAVEN_ARTIFACT"
+            )
           "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
