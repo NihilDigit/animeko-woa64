@@ -1,0 +1,82 @@
+name: WOA64 Env Probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - name: Probe installed tools
+        shell: pwsh
+        run: |
+          Write-Host "OS=$env:ImageOS"
+          Write-Host "Version=$env:ImageVersion"
+          Write-Host "Arch=$env:PROCESSOR_ARCHITECTURE"
+          Write-Host "RunnerArch=$env:RUNNER_ARCH"
+          Write-Host "PATH=$env:PATH"
+
+          $commands = @(
+            "git",
+            "cmake",
+            "ninja",
+            "swig",
+            "vcpkg",
+            "cl",
+            "clang",
+            "clang++",
+            "gcc",
+            "g++",
+            "bash",
+            "pacman",
+            "java",
+            "javac",
+            "python",
+            "choco",
+            "winget"
+          )
+
+          foreach ($command in $commands) {
+            Write-Host ""
+            Write-Host "## $command"
+            Get-Command $command -All -ErrorAction SilentlyContinue | Format-List Source,Version,CommandType
+            try {
+              & $command --version 2>&1 | Select-Object -First 5
+            } catch {
+              try {
+                & $command -version 2>&1 | Select-Object -First 5
+              } catch {
+                Write-Host "No version output"
+              }
+            }
+          }
+
+          Write-Host ""
+          Write-Host "## well-known paths"
+          $paths = @(
+            "C:\vcpkg",
+            "C:\msys64",
+            "C:\msys64\ucrt64\bin",
+            "C:\msys64\clangarm64\bin",
+            "C:\Program Files\Microsoft Visual Studio\2022",
+            "C:\Program Files\Java",
+            "C:\Program Files\Eclipse Adoptium"
+          )
+          foreach ($path in $paths) {
+            if (Test-Path $path) {
+              Write-Host "FOUND $path"
+              Get-ChildItem $path -Force | Select-Object -First 20 | Format-Table Name,Length,Mode
+            } else {
+              Write-Host "MISSING $path"
+            }
+          }
+
+          Write-Host ""
+          Write-Host "## Visual Studio instances"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            & $vswhere -all -products * -format json
+          } else {
+            Write-Host "vswhere missing"
+          }
