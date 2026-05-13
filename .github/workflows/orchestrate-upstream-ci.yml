@@ -121,7 +121,7 @@ jobs:
           ./.github/workflows/scripts/prepare-mock-maven.ps1 `
             -AnitorrentArtifacts artifacts/anitorrent `
             -MediampArtifacts artifacts/mediamp `
-            -OutputDirectory .mock-maven `
+            -OutputDirectory mock-maven `
             -AnitorrentVersion "${{ inputs.anitorrent_version }}" `
             -MediampVersion "${{ inputs.mediamp_version }}"
 
@@ -130,7 +130,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MOCK_MAVEN_ARTIFACT }}
-          path: .mock-maven
+          path: mock-maven
           if-no-files-found: error
 
       - name: Trigger animeko CI
