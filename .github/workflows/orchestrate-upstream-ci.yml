@@ -23,10 +23,20 @@ on:
         required: true
         default: "0.2.0"
         type: string
+      anitorrent_run_id:
+        description: "Existing anitorrent workflow run id to reuse instead of dispatching"
+        required: false
+        default: ""
+        type: string
       mediamp_version:
         description: "Maven version expected by animeko for org.openani.mediamp runtime"
         required: true
         default: "0.1.11"
+        type: string
+      mediamp_run_id:
+        description: "Existing mediamp workflow run id to reuse instead of dispatching"
+        required: false
+        default: ""
         type: string
       run_anitorrent:
         description: "Trigger anitorrent and stage its Windows ARM64 runtime"
@@ -74,7 +84,7 @@ jobs:
 
       - name: Trigger anitorrent CI
         id: anitorrent
-        if: ${{ inputs.run_anitorrent }}
+        if: ${{ inputs.run_anitorrent && inputs.anitorrent_run_id == '' }}
         shell: pwsh
         run: |
           $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
@@ -88,14 +98,18 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/anitorrent | Out-Null
-          gh run download "${{ steps.anitorrent.outputs.run_id }}" `
+          $runId = "${{ inputs.anitorrent_run_id }}"
+          if ([string]::IsNullOrWhiteSpace($runId)) {
+            $runId = "${{ steps.anitorrent.outputs.run_id }}"
+          }
+          gh run download "$runId" `
             --repo $env:ANITORRENT_REPO `
             --name anitorrent-windows-arm64 `
             --dir artifacts/anitorrent
 
       - name: Trigger mediamp CI
         id: mediamp
-        if: ${{ inputs.run_mediamp }}
+        if: ${{ inputs.run_mediamp && inputs.mediamp_run_id == '' }}
         shell: pwsh
         run: |
           $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
@@ -109,7 +123,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/mediamp | Out-Null
-          gh run download "${{ steps.mediamp.outputs.run_id }}" `
+          $runId = "${{ inputs.mediamp_run_id }}"
+          if ([string]::IsNullOrWhiteSpace($runId)) {
+            $runId = "${{ steps.mediamp.outputs.run_id }}"
+          }
+          gh run download "$runId" `
             --repo $env:MEDIAMP_REPO `
             --name mediamp-ffmpeg-runtime-windows-arm64 `
             --dir artifacts/mediamp
