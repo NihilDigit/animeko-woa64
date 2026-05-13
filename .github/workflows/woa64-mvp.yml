@@ -72,6 +72,7 @@ jobs:
           sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - name: Setup MSYS2 clangarm64
+        id: msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: CLANGARM64
@@ -83,6 +84,13 @@ jobs:
             mingw-w64-clang-aarch64-nasm
             mingw-w64-clang-aarch64-openssl
             mingw-w64-clang-aarch64-ca-certificates
+
+      - name: Export MSYS2 root
+        shell: pwsh
+        run: |
+          $msys2Root = "${{ steps.msys2.outputs['msys2-location'] }}"
+          "MSYS2_ROOT=$msys2Root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$msys2Root\clangarm64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Setup vcpkg
         shell: pwsh
@@ -129,6 +137,11 @@ jobs:
             "ani.desktop.proguard=false"
             "jvm.toolchain.version=21"
           ) | Set-Content -Path animeko\local.properties -Encoding utf8
+          @(
+            "sdk.dir=$($env:ANDROID_HOME.Replace('\','/'))"
+            "msys2.dir=$($env:MSYS2_ROOT.Replace('\','/'))"
+            "jvm.toolchain.version=21"
+          ) | Set-Content -Path mediamp\local.properties -Encoding utf8
           @(
             "sdk.dir=$($env:ANDROID_HOME.Replace('\','/'))"
             "SWIG=$($env:SWIG_EXE.Replace('\','/'))"
