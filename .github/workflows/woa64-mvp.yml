@@ -166,6 +166,7 @@ jobs:
         working-directory: anitorrent
         timeout-minutes: 180
         run: |
+          $env:CL = "/IC:\vcpkg\installed\arm64-windows\include"
           $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
           .\gradlew.bat :anitorrent-native:copyNativeJarForCurrentPlatform --console=plain --no-configuration-cache @gradleArgs
 
