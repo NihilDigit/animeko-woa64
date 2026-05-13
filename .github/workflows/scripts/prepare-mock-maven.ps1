@@ -117,8 +117,7 @@ Write-MavenArtifact `
     -GroupId "org.openani.anitorrent" `
     -ArtifactId "anitorrent-native-desktop" `
     -Version $AnitorrentVersion `
-    -JarPath $anitorrentJar.FullName `
-    -Classifier "windows-arm64"
+    -JarPath $anitorrentJar.FullName
 
 Write-MavenArtifact `
     -GroupId "org.openani.mediamp" `
