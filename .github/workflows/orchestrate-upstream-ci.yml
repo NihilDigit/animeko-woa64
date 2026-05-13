@@ -1,0 +1,148 @@
+name: WOA64 CI Orchestrator
+
+on:
+  workflow_dispatch:
+    inputs:
+      anitorrent_ref:
+        description: "anitorrent ref to build"
+        required: true
+        default: "woa"
+        type: string
+      mediamp_ref:
+        description: "mediamp ref to build"
+        required: true
+        default: "woa"
+        type: string
+      animeko_ref:
+        description: "animeko ref to build"
+        required: true
+        default: "woa"
+        type: string
+      anitorrent_version:
+        description: "Maven version expected by animeko for org.openani.anitorrent:anitorrent-native-desktop"
+        required: true
+        default: "0.2.0"
+        type: string
+      mediamp_version:
+        description: "Maven version expected by animeko for org.openani.mediamp runtime"
+        required: true
+        default: "0.1.11"
+        type: string
+      run_anitorrent:
+        description: "Trigger anitorrent and stage its Windows ARM64 runtime"
+        required: true
+        default: true
+        type: boolean
+      run_mediamp:
+        description: "Trigger mediamp and stage its Windows ARM64 runtime"
+        required: true
+        default: true
+        type: boolean
+      run_animeko:
+        description: "Trigger animeko with the staged mock Maven repository"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  orchestrate:
+    name: Build upstream-style WOA64 chain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    env:
+      ANITORRENT_REPO: NihilDigit/anitorrent
+      MEDIAMP_REPO: NihilDigit/mediamp
+      ANIMEKO_REPO: NihilDigit/animeko
+      WORKFLOW_FILE: build.yml
+      MOCK_MAVEN_ARTIFACT: mock-maven-woa64
+      GH_TOKEN: ${{ secrets.WOA64_CI_TOKEN }}
+
+    steps:
+      - name: Checkout meta repository
+        uses: actions/checkout@v4
+
+      - name: Check orchestration token
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw "Set the WOA64_CI_TOKEN secret. The default GITHUB_TOKEN cannot dispatch workflows in the fork repositories."
+          }
+
+      - name: Trigger anitorrent CI
+        id: anitorrent
+        if: ${{ inputs.run_anitorrent }}
+        shell: pwsh
+        run: |
+          $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
+            -Repo $env:ANITORRENT_REPO `
+            -Workflow $env:WORKFLOW_FILE `
+            -Ref "${{ inputs.anitorrent_ref }}"
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download anitorrent artifact
+        if: ${{ inputs.run_anitorrent }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts\anitorrent | Out-Null
+          gh run download "${{ steps.anitorrent.outputs.run_id }}" `
+            --repo $env:ANITORRENT_REPO `
+            --name anitorrent-windows-arm64 `
+            --dir artifacts\anitorrent
+
+      - name: Trigger mediamp CI
+        id: mediamp
+        if: ${{ inputs.run_mediamp }}
+        shell: pwsh
+        run: |
+          $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
+            -Repo $env:MEDIAMP_REPO `
+            -Workflow $env:WORKFLOW_FILE `
+            -Ref "${{ inputs.mediamp_ref }}"
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download mediamp artifact
+        if: ${{ inputs.run_mediamp }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts\mediamp | Out-Null
+          gh run download "${{ steps.mediamp.outputs.run_id }}" `
+            --repo $env:MEDIAMP_REPO `
+            --name mediamp-ffmpeg-runtime-windows-arm64 `
+            --dir artifacts\mediamp
+
+      - name: Prepare mocked Maven repository
+        if: ${{ inputs.run_anitorrent && inputs.run_mediamp }}
+        shell: pwsh
+        run: |
+          .\.github\workflows\scripts\prepare-mock-maven.ps1 `
+            -AnitorrentArtifacts artifacts\anitorrent `
+            -MediampArtifacts artifacts\mediamp `
+            -OutputDirectory .mock-maven `
+            -AnitorrentVersion "${{ inputs.anitorrent_version }}" `
+            -MediampVersion "${{ inputs.mediamp_version }}"
+
+      - name: Upload mocked Maven repository
+        if: ${{ inputs.run_anitorrent && inputs.run_mediamp }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MOCK_MAVEN_ARTIFACT }}
+          path: .mock-maven
+          if-no-files-found: error
+
+      - name: Trigger animeko CI
+        id: animeko
+        if: ${{ inputs.run_animeko }}
+        shell: pwsh
+        run: |
+          $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
+            -Repo $env:ANIMEKO_REPO `
+            -Workflow $env:WORKFLOW_FILE `
+            -Ref "${{ inputs.animeko_ref }}" `
+            -Field "mock_maven_repo=${{ github.repository }}" `
+            -Field "mock_maven_run_id=${{ github.run_id }}" `
+            -Field "mock_maven_artifact=$env:MOCK_MAVEN_ARTIFACT"
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
