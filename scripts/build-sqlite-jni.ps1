@@ -1,7 +1,8 @@
 param(
     [string]$OutJar = "$PSScriptRoot\..\.tools\sqlite-bundled-jvm-windows-arm64\sqlite-bundled-jvm-windows-arm64.jar",
     [string]$WorkDir = "$PSScriptRoot\..\.tools\sqlite-build",
-    [string]$JdkHome = $env:JAVA_HOME
+    [string]$JdkHome = $env:JAVA_HOME,
+    [string]$Msys2Root = $env:MSYS2_ROOT
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,11 +11,23 @@ if ([string]::IsNullOrWhiteSpace($JdkHome)) {
     throw "JAVA_HOME or -JdkHome is required."
 }
 
-$clang = "C:\msys64\clangarm64\bin\clang.exe"
-$clangxx = "C:\msys64\clangarm64\bin\clang++.exe"
-if (!(Test-Path $clang) -or !(Test-Path $clangxx)) {
-    throw "MSYS2 clangarm64 toolchain was not found under C:\msys64\clangarm64\bin."
+$msys2Candidates = @($Msys2Root, "C:\msys64")
+if (![string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+    $msys2Candidates += Join-Path $env:RUNNER_TEMP "setup-msys2\msys64"
 }
+$msys2Candidates = $msys2Candidates | Where-Object { ![string]::IsNullOrWhiteSpace($_) }
+
+$clangBin = $msys2Candidates |
+    ForEach-Object { Join-Path $_ "clangarm64\bin" } |
+    Where-Object { (Test-Path (Join-Path $_ "clang.exe")) -and (Test-Path (Join-Path $_ "clang++.exe")) } |
+    Select-Object -First 1
+
+if ([string]::IsNullOrWhiteSpace($clangBin)) {
+    throw "MSYS2 clangarm64 toolchain was not found. Checked: $($msys2Candidates -join ', ')"
+}
+
+$clang = Join-Path $clangBin "clang.exe"
+$clangxx = Join-Path $clangBin "clang++.exe"
 
 $sqliteVersion = "3.50.1"
 $sqliteZipVersion = "3500100"
