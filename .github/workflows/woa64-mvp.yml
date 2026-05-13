@@ -1,0 +1,189 @@
+name: WOA64 MVP
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - woa
+      - main
+
+jobs:
+  build:
+    name: Build Animeko Windows ARM64
+    runs-on: windows-11-arm
+    timeout-minutes: 240
+
+    env:
+      JBR_URL: https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk_jcef-21.0.10-windows-aarch64-b1163.110.tar.gz
+      JBR_CHECKSUM_URL: https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk_jcef-21.0.10-windows-aarch64-b1163.110.tar.gz.checksum
+      GRADLE_ARGS: |
+        --stacktrace
+        -Porg.gradle.daemon.idletimeout=60000
+        -Dfile.encoding=UTF-8
+        -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+        -DBoost_INCLUDE_DIR=C:/vcpkg/installed/arm64-windows/include
+        -Dorg.gradle.jvmargs=-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx4g
+        -Dkotlin.daemon.jvm.options=-Xmx4g
+
+    steps:
+      - name: Checkout workspace
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Checkout submodules over HTTPS
+        shell: pwsh
+        run: |
+          git submodule set-url animeko https://github.com/NihilDigit/animeko.git
+          git submodule set-url mediamp https://github.com/NihilDigit/mediamp.git
+          git submodule set-url anitorrent https://github.com/NihilDigit/anitorrent.git
+          git submodule update --init --recursive
+
+      - name: Get JBR
+        id: jbr
+        shell: pwsh
+        env:
+          RUNNER_TOOL_CACHE: ${{ runner.tool_cache }}
+        run: |
+          python .github/workflows/download_jbr.py
+
+      - name: Setup JBR 21
+        uses: gmitch215/setup-java@6d2c5e1f82f180ae79f799f0ed6e3e5efb4e664d
+        with:
+          java-version: "21"
+          distribution: jdkfile
+          jdkFile: ${{ steps.jbr.outputs.jbrLocation }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure JBR for Compose
+        shell: pwsh
+        run: |
+          "ANI_COMPOSE_JAVA_HOME=$env:JAVA_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        shell: pwsh
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Setup MSYS2 clangarm64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: >-
+            mingw-w64-clang-aarch64-clang
+            mingw-w64-clang-aarch64-lld
+            mingw-w64-clang-aarch64-pkgconf
+            mingw-w64-clang-aarch64-nasm
+            mingw-w64-clang-aarch64-openssl
+            mingw-w64-clang-aarch64-ca-certificates
+
+      - name: Setup vcpkg
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg.exe install openssl:arm64-windows
+          "VCPKG_ROOT=C:\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "C:\vcpkg" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-disabled: true
+
+      - name: Install SWIG 4.2.1
+        shell: pwsh
+        run: |
+          $swigZip = Join-Path $env:RUNNER_TEMP "swigwin-4.2.1.zip"
+          $swigRoot = "C:\tools"
+          Invoke-WebRequest -Uri "https://downloads.sourceforge.net/project/swig/swigwin/swigwin-4.2.1/swigwin-4.2.1.zip" -OutFile $swigZip
+          Expand-Archive -Path $swigZip -DestinationPath $swigRoot -Force
+          "SWIG_EXE=$swigRoot\swigwin-4.2.1\swig.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build SQLite Windows ARM64 JNI jar
+        shell: pwsh
+        run: |
+          .\scripts\build-sqlite-jni.ps1
+
+      - name: Configure local properties
+        shell: pwsh
+        run: |
+          $workspace = $PWD.Path.Replace('\','/')
+          @(
+            "sdk.dir=$($env:ANDROID_HOME.Replace('\','/'))"
+            "ani.build.anitorrent.path=$workspace/anitorrent"
+            "ani.build.mediamp.path=$workspace/mediamp"
+            "ani.build.sqlite.windows.arm64.jar=$workspace/.tools/sqlite-bundled-jvm-windows-arm64/sqlite-bundled-jvm-windows-arm64.jar"
+            "ani.desktop.proguard=false"
+            "jvm.toolchain.version=21"
+          ) | Set-Content -Path animeko\local.properties -Encoding utf8
+          @(
+            "sdk.dir=$($env:ANDROID_HOME.Replace('\','/'))"
+            "SWIG=$($env:SWIG_EXE.Replace('\','/'))"
+            "CMAKE_BUILD_TYPE=Release"
+            "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            "Boost_INCLUDE_DIR=C:/vcpkg/installed/arm64-windows/include"
+            "ani.publishing.onlyHostOS=true"
+            "jvm.toolchain.version=21"
+          ) | Set-Content -Path anitorrent\local.properties -Encoding utf8
+
+      - name: Resolve Animeko dependencies
+        shell: pwsh
+        working-directory: animeko
+        continue-on-error: true
+        timeout-minutes: 180
+        run: |
+          $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+          .\gradlew.bat @gradleArgs
+
+      - name: Build anitorrent native runtime
+        shell: pwsh
+        working-directory: anitorrent
+        timeout-minutes: 180
+        run: |
+          $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+          .\gradlew.bat :anitorrent-native:copyNativeJarForCurrentPlatform --console=plain --no-configuration-cache @gradleArgs
+
+      - name: Build mediamp FFmpeg runtime
+        shell: pwsh
+        working-directory: mediamp
+        timeout-minutes: 180
+        run: |
+          $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+          .\gradlew.bat :mediamp-ffmpeg:ffmpegRuntimeJarWindowsArm64 --console=plain --no-configuration-cache @gradleArgs
+
+      - name: Compile Animeko desktop
+        shell: pwsh
+        working-directory: animeko
+        timeout-minutes: 180
+        run: |
+          $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+          .\gradlew.bat compileKotlin compileCommonMainKotlinMetadata compileJvmMainKotlinMetadata compileKotlinDesktop compileKotlinMetadata --console=plain @gradleArgs
+
+      - name: Build Animeko release distributable
+        shell: pwsh
+        working-directory: animeko
+        timeout-minutes: 180
+        run: |
+          $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+          .\gradlew.bat createReleaseDistributable --console=plain @gradleArgs
+
+      - name: Upload compose logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-logs-windows-arm64
+          path: animeko/app/desktop/build/compose/logs
+
+      - name: Upload distributable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ani-windows-arm64-portable
+          path: animeko/app/desktop/build/compose/binaries/main-release/app
+          if-no-files-found: error
+          overwrite: true
