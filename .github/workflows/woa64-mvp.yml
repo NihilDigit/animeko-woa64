@@ -21,9 +21,10 @@ jobs:
         -Porg.gradle.daemon.idletimeout=60000
         -Dfile.encoding=UTF-8
         -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-        -DBoost_INCLUDE_DIR=C:/vcpkg/installed/arm64-windows/include
         -Dorg.gradle.jvmargs=-Xmx4g -Dkotlin.daemon.jvm.options=-Xmx4g
         -Dkotlin.daemon.jvm.options=-Xmx4g
+        -Pkotlin.native.enableKlibsCrossCompilation=false
+        -Pkotlin.native.ignoreDisabledTargets=true
 
     steps:
       - name: Checkout workspace
@@ -38,6 +39,18 @@ jobs:
           git submodule set-url mediamp https://github.com/NihilDigit/mediamp.git
           git submodule set-url anitorrent https://github.com/NihilDigit/anitorrent.git
           git submodule update --init --recursive
+
+      - name: Setup JDK 17 toolchain
+        uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: "17"
+          architecture: aarch64
+
+      - name: Remember JDK 17 toolchain
+        shell: pwsh
+        run: |
+          "JDK17_HOME=$env:JAVA_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Get JBR
         id: jbr
@@ -60,6 +73,14 @@ jobs:
         shell: pwsh
         run: |
           "ANI_COMPOSE_JAVA_HOME=$env:JAVA_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $jdk17Home = $env:JDK17_HOME.Replace('\','/')
+          $jbrHome = $env:JAVA_HOME.Replace('\','/')
+          @(
+            "GRADLE_ARGS<<EOF"
+            $env:GRADLE_ARGS.TrimEnd()
+            "-Dorg.gradle.java.installations.paths=$jdk17Home,$jbrHome"
+            "EOF"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -99,7 +120,7 @@ jobs:
             git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
           }
           C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg.exe install openssl:arm64-windows boost-headers:arm64-windows
+          C:\vcpkg\vcpkg.exe install openssl:arm64-windows
           "VCPKG_ROOT=C:\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "C:\vcpkg" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
@@ -147,7 +168,6 @@ jobs:
             "SWIG=$($env:SWIG_EXE.Replace('\','/'))"
             "CMAKE_BUILD_TYPE=Release"
             "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-            "Boost_INCLUDE_DIR=C:/vcpkg/installed/arm64-windows/include"
             "ani.publishing.onlyHostOS=true"
             "jvm.toolchain.version=21"
           ) | Set-Content -Path anitorrent\local.properties -Encoding utf8
@@ -159,14 +179,13 @@ jobs:
         timeout-minutes: 180
         run: |
           $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
-          .\gradlew.bat @gradleArgs
+          .\gradlew.bat --no-configuration-cache @gradleArgs
 
       - name: Build anitorrent native runtime
         shell: pwsh
         working-directory: anitorrent
         timeout-minutes: 180
         run: |
-          $env:CL = "/IC:\vcpkg\installed\arm64-windows\include"
           $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
           .\gradlew.bat :anitorrent-native:copyNativeJarForCurrentPlatform --console=plain --no-configuration-cache @gradleArgs
 
@@ -184,7 +203,7 @@ jobs:
         timeout-minutes: 180
         run: |
           $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
-          .\gradlew.bat compileKotlin compileCommonMainKotlinMetadata compileJvmMainKotlinMetadata compileKotlinDesktop compileKotlinMetadata --console=plain @gradleArgs
+          .\gradlew.bat compileKotlin compileCommonMainKotlinMetadata compileJvmMainKotlinMetadata compileKotlinDesktop compileKotlinMetadata --console=plain --no-configuration-cache @gradleArgs
 
       - name: Build Animeko release distributable
         shell: pwsh
@@ -192,7 +211,7 @@ jobs:
         timeout-minutes: 180
         run: |
           $gradleArgs = $env:GRADLE_ARGS -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
-          .\gradlew.bat createReleaseDistributable --console=plain @gradleArgs
+          .\gradlew.bat createReleaseDistributable --console=plain --no-configuration-cache @gradleArgs
 
       - name: Upload compose logs
         if: always()
