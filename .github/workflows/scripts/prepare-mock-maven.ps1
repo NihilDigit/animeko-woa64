@@ -62,7 +62,9 @@ function Write-MavenArtifact {
         [Parameter(Mandatory = $true)]
         [string]$JarPath,
 
-        [string]$Classifier = ""
+        [string]$Classifier = "",
+
+        [array]$Dependencies = @()
     )
 
     $groupPath = $GroupId.Replace(".", [IO.Path]::DirectorySeparatorChar)
@@ -72,12 +74,32 @@ function Write-MavenArtifact {
     $suffix = if ($Classifier) { "-$Classifier" } else { "" }
     Copy-Item -LiteralPath $JarPath -Destination (Join-Path $artifactDir "$ArtifactId-$Version$suffix.jar") -Force
 
+    $dependenciesXml = ""
+    if ($Dependencies.Count -gt 0) {
+        $dependencyItems = foreach ($dependency in $Dependencies) {
+@"
+    <dependency>
+      <groupId>$($dependency.GroupId)</groupId>
+      <artifactId>$($dependency.ArtifactId)</artifactId>
+      <version>$($dependency.Version)</version>
+      <scope>$($dependency.Scope)</scope>
+    </dependency>
+"@
+        }
+        $dependenciesXml = @"
+  <dependencies>
+$($dependencyItems -join "`n")
+  </dependencies>
+"@
+    }
+
     @"
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
   <groupId>$GroupId</groupId>
   <artifactId>$ArtifactId</artifactId>
   <version>$Version</version>
+$dependenciesXml
 </project>
 "@ | Set-Content -Path (Join-Path $artifactDir "$ArtifactId-$Version.pom") -Encoding utf8
 }
@@ -117,14 +139,26 @@ Write-MavenArtifact `
     -GroupId "org.openani.anitorrent" `
     -ArtifactId "anitorrent-native-desktop" `
     -Version $AnitorrentVersion `
-    -JarPath $anitorrentJar.FullName
+    -JarPath $anitorrentJar.FullName `
+    -Dependencies @(@{
+        GroupId = "org.openani.anitorrent"
+        ArtifactId = "anitorrent-native-desktop-jni"
+        Version = $AnitorrentVersion
+        Scope = "compile"
+    })
 
 Write-MavenArtifact `
     -GroupId "org.openani.anitorrent" `
     -ArtifactId "anitorrent-native-desktop" `
     -Version $AnitorrentVersion `
     -JarPath $anitorrentJar.FullName `
-    -Classifier "windows-arm64"
+    -Classifier "windows-arm64" `
+    -Dependencies @(@{
+        GroupId = "org.openani.anitorrent"
+        ArtifactId = "anitorrent-native-desktop-jni"
+        Version = $AnitorrentVersion
+        Scope = "compile"
+    })
 
 Write-MavenArtifact `
     -GroupId "org.openani.mediamp" `
