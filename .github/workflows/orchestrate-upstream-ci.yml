@@ -53,9 +53,29 @@ on:
         required: true
         default: true
         type: boolean
+      animeko_run_id:
+        description: "Existing animeko workflow run id to reuse instead of dispatching"
+        required: false
+        default: ""
+        type: string
+      publish_release:
+        description: "Publish the Animeko Windows ARM64 portable artifact as a prerelease"
+        required: true
+        default: false
+        type: boolean
+      release_tag:
+        description: "Release tag to create when publish_release is enabled; defaults to woa64-<run_id>"
+        required: false
+        default: ""
+        type: string
+      release_title:
+        description: "Release title to use when publish_release is enabled"
+        required: false
+        default: ""
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   orchestrate:
@@ -153,7 +173,7 @@ jobs:
 
       - name: Trigger animeko CI
         id: animeko
-        if: ${{ inputs.run_animeko }}
+        if: ${{ inputs.run_animeko && inputs.animeko_run_id == '' }}
         shell: pwsh
         run: |
           $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
@@ -166,3 +186,78 @@ jobs:
               "mock_maven_artifact=$env:MOCK_MAVEN_ARTIFACT"
             )
           "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Resolve Animeko run id
+        id: animeko-run
+        if: ${{ inputs.run_animeko }}
+        shell: pwsh
+        run: |
+          $runId = "${{ inputs.animeko_run_id }}"
+          if ([string]::IsNullOrWhiteSpace($runId)) {
+            $runId = "${{ steps.animeko.outputs.run_id }}"
+          }
+          if ([string]::IsNullOrWhiteSpace($runId)) {
+            throw "Animeko run id was not provided and the trigger step did not produce one."
+          }
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download Animeko Windows ARM64 portable artifact
+        if: ${{ inputs.run_animeko && inputs.publish_release }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/animeko | Out-Null
+          gh run download "${{ steps.animeko-run.outputs.run_id }}" `
+            --repo $env:ANIMEKO_REPO `
+            --name ani-windows-aarch64-portable `
+            --dir artifacts/animeko
+
+      - name: Package Animeko Windows ARM64 portable artifact
+        if: ${{ inputs.run_animeko && inputs.publish_release }}
+        shell: bash
+        run: |
+          cd artifacts/animeko
+          zip -r -q "../Ani-woa64-${GITHUB_RUN_ID}-windows-aarch64-portable.zip" Ani
+
+      - name: Publish Animeko Windows ARM64 prerelease
+        if: ${{ inputs.run_animeko && inputs.publish_release }}
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "woa64-${{ github.run_id }}"
+          }
+
+          $title = "${{ inputs.release_title }}"
+          if ([string]::IsNullOrWhiteSpace($title)) {
+            $title = "Animeko WoA64 $tag"
+          }
+
+          $asset = "artifacts/Ani-woa64-${{ github.run_id }}-windows-aarch64-portable.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash
+          $notes = @"
+          Windows on ARM64 MVP build for Animeko.
+
+          Source runs:
+          - Meta orchestrator: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Animeko build: https://github.com/$env:ANIMEKO_REPO/actions/runs/${{ steps.animeko-run.outputs.run_id }}
+
+          Source refs:
+          - anitorrent: ${{ inputs.anitorrent_ref }}
+          - mediamp: ${{ inputs.mediamp_ref }}
+          - animeko: ${{ inputs.animeko_ref }}
+
+          Validation:
+          - Animeko WoA64 build completed successfully.
+          - Desktop package uploaded successfully.
+          - Verification job downloaded the Windows AArch64 portable artifact and loaded Anitorrent successfully.
+
+          SHA256:
+          $hash
+          "@
+
+          gh release create $tag $asset `
+            --repo "${{ github.repository }}" `
+            --target "${{ github.sha }}" `
+            --title $title `
+            --notes $notes `
+            --prerelease
