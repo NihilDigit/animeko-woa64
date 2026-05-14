@@ -12,13 +12,20 @@ Commit code in the owning submodule first, push its `woa` branch, then update th
 
 ## Current Progress
 
-The three PR branches are single squashed commits and have been force-pushed:
+MVP WOA64 desktop release is available as a prerelease:
+
+- Release: `woa64-20260514-25834606829`
+- Meta orchestrator run: `25834599212`
+- Animeko build run: `25834606829`
+- Validated: build, desktop package upload, Anitorrent load check, and local launch smoke test.
+
+The three upstream PR branches are single squashed commits and have been force-pushed:
 
 - `anitorrent@woa`: Windows ARM64 native runtime support plus minimal CI dispatch/artifact harness.
 - `mediamp@woa`: Windows ARM64 FFmpeg runtime target plus minimal CI dispatch/artifact harness.
 - `animeko@woa`: Windows ARM64 desktop build support plus temporary mock Maven consumption for orchestrated CI.
 
-The root meta repo now uses `WOA64 CI Orchestrator` as the active path. The old direct build workflow is disabled under `.github/workflows/disabled/`. `WOA64 Env Probe` remains manual-only.
+The root meta repo uses `WOA64 CI Orchestrator` as the active path. It can run the full chain or reuse existing run ids, and can publish a prerelease when `publish_release=true`.
 
 ## Build, Test, and Development Commands
 
@@ -44,6 +51,14 @@ Validate YAML with:
 uvx --with pyyaml python -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/build.yml').read_text())"
 ```
 
+Run the meta release path without rebuilding upstream repos:
+
+```powershell
+gh workflow run orchestrate-upstream-ci.yml --repo NihilDigit/animeko-woa64 `
+  -f run_anitorrent=false -f run_mediamp=false -f run_animeko=true `
+  -f animeko_run_id=<successful-animeko-run-id> -f publish_release=true
+```
+
 ## Coding Style & Constraints
 
 Minimize upstream diff. Do not upgrade dependency versions, Gradle plugins, toolchain helpers, or generated code unless WOA64 strictly requires it. Avoid opportunistic cleanup, hardening, or style churn.
@@ -55,6 +70,8 @@ WOA64 orchestration harness
 ```
 
 This marks dispatch/mock/artifact code that should be removed or reshaped before final upstream PRs if it is not generally useful.
+
+Keep release artifacts out of git. Local downloads and zips belong under ignored `artifacts/`.
 
 ## Testing Guidelines
 
