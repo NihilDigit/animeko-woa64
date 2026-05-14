@@ -14,10 +14,11 @@ Commit code in the owning submodule first, push its `woa` branch, then update th
 
 MVP WOA64 desktop release is available as a prerelease:
 
-- Release: `woa64-20260514-25834606829`
-- Meta orchestrator run: `25834599212`
-- Animeko build run: `25834606829`
-- Validated: build, desktop package upload, Anitorrent load check, and local launch smoke test.
+- Release: `woa64-20260514-25836218728`
+- Meta orchestrator run: `25836207864`
+- Animeko build run: `25836218728`
+- Release publishing run: `25837085462`
+- Validated: Android SDK setup, Android compile, desktop package upload, desktop tests, Android host tests, Anitorrent load check, and local launch smoke test.
 
 The three upstream PR branches are single squashed commits and have been force-pushed:
 
