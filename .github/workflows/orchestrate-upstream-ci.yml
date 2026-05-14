@@ -211,14 +211,6 @@ jobs:
             --name ani-windows-aarch64-portable `
             --dir artifacts/animeko
 
-      - name: Patch AndroidX SQLite bundled runtime for Windows ARM64
-        if: ${{ inputs.run_animeko && inputs.publish_release }}
-        shell: pwsh
-        run: |
-          ./.github/workflows/scripts/patch-sqlite-bundled.ps1 `
-            -AppDirectory artifacts/animeko/Ani/app `
-            -SqliteJniDll tools/sqlite-woa64/sqliteJni.dll
-
       - name: Package Animeko Windows ARM64 portable artifact
         if: ${{ inputs.run_animeko && inputs.publish_release }}
         shell: bash
@@ -257,8 +249,7 @@ jobs:
           Validation:
           - Animeko WoA64 build completed successfully.
           - Desktop package uploaded successfully.
-          - Verification job downloaded the Windows AArch64 portable artifact and loaded Anitorrent successfully.
-          - AndroidX sqlite-bundled-jvm was patched with a Windows ARM64 sqliteJni.dll workaround.
+          - Verification job downloaded the Windows AArch64 portable artifact and ran the packaged native smoke tests.
 
           SHA256:
           $hash
