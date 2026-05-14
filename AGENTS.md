@@ -12,27 +12,27 @@ Commit code in the owning submodule first, push its `woa` branch, then update th
 
 ## Current Progress
 
-An earlier MVP WOA64 desktop prerelease exists, but it is superseded for
-current work because the SQLite runtime workaround has been redesigned:
+Current WOA64 MVP prerelease:
 
-- Old prerelease: `woa64-20260514-25836218728`
-- Old Animeko build run: `25836218728`
-- Do not treat that release as PR-ready.
+- Release: `woa64-25846286824`
+- Asset: `Ani-woa64-25846286824-windows-aarch64-portable.zip`
+- SHA256: `92eef23b29fafc49219ecdd76146951710bbb3751991175f8ee5297ad0bb289e`
 
 The three upstream PR branches are single squashed commits and have been force-pushed:
 
 - `anitorrent@woa`: `f5cadfeb` Windows ARM64 native runtime support plus minimal CI dispatch/artifact harness.
 - `mediamp@woa`: `138d6247` Windows ARM64 FFmpeg runtime target plus minimal CI dispatch/artifact harness.
-- `animeko@woa`: `af56ffa5` Windows ARM64 desktop build support plus temporary mock Maven consumption for orchestrated CI.
+- `animeko@woa`: `bbebe92b` Windows ARM64 desktop build support plus temporary mock Maven consumption for orchestrated CI.
 
 The root meta repo uses `WOA64 CI Orchestrator` as the active path. It can run the full chain or reuse existing run ids, and can publish a prerelease when `publish_release=true`.
 
-Current active validation:
+Current validation:
 
-- Meta orchestrator run: `25842367994`
-- Triggered anitorrent run: `25842375087`
+- Meta orchestrator run: `25846286824`
+- Reuses anitorrent run: `25842375087`
 - Reuses mediamp run: `25830726716`
-- The previous Animeko run `25841397983` failed in the SQLite patch step because Windows PowerShell did not load `System.IO.Compression`. `animeko@woa` now adds `Add-Type -AssemblyName System.IO.Compression` and should be revalidated by the active orchestrator.
+- Animeko run: `25846299790`
+- Result: build, package upload, AndroidX SQLite patch, desktop checks, Android host checks, and Windows ARM64 verify all succeeded.
 
 ## Build, Test, and Development Commands
 
