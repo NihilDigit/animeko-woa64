@@ -1,13 +1,16 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$AnitorrentArtifacts,
+    [string]$AnitorrentArtifacts = "",
+
+    [string]$MediampArtifacts = "",
 
     [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
 
     [string]$AnimekoDirectory = "",
 
-    [string]$AnitorrentVersion = ""
+    [string]$AnitorrentVersion = "",
+
+    [string]$MediampVersion = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,14 +23,23 @@ function Read-AnimekoVersions {
 
     $versions = @{
         Anitorrent = ""
+        Mediamp = ""
     }
 
     $settings = Join-Path $Path "settings.gradle.kts"
+    $catalog = Join-Path $Path "gradle/libs.versions.toml"
 
     if (Test-Path $settings) {
         $match = Select-String -Path $settings -Pattern 'org\.openani\.anitorrent:catalog:([^"]+)' | Select-Object -First 1
         if ($match) {
             $versions.Anitorrent = $match.Matches[0].Groups[1].Value
+        }
+    }
+
+    if (Test-Path $catalog) {
+        $match = Select-String -Path $catalog -Pattern '^mediamp\s*=\s*"([^"]+)"' | Select-Object -First 1
+        if ($match) {
+            $versions.Mediamp = $match.Matches[0].Groups[1].Value
         }
     }
 
@@ -97,40 +109,68 @@ if ($AnimekoDirectory) {
     if (!$AnitorrentVersion) {
         $AnitorrentVersion = $animekoVersions.Anitorrent
     }
+    if (!$MediampVersion) {
+        $MediampVersion = $animekoVersions.Mediamp
+    }
 }
 
-if (!$AnitorrentVersion) {
+if (!$AnitorrentArtifacts -and !$MediampArtifacts) {
+    throw "At least one artifact directory must be provided."
+}
+if ($AnitorrentArtifacts -and !$AnitorrentVersion) {
     throw "AnitorrentVersion was not provided and could not be read from AnimekoDirectory."
 }
-
-$anitorrentJar = Get-ChildItem -Path $AnitorrentArtifacts -Recurse -Filter "*windows-arm64*.jar" |
-    Select-Object -First 1
-
-if ($null -eq $anitorrentJar) {
-    throw "Could not find anitorrent Windows ARM64 jar in $AnitorrentArtifacts."
+if ($MediampArtifacts -and !$MediampVersion) {
+    throw "MediampVersion was not provided and could not be read from AnimekoDirectory."
 }
 
-Write-MavenArtifact `
-    -GroupId "org.openani.anitorrent" `
-    -ArtifactId "anitorrent-native-desktop" `
-    -Version $AnitorrentVersion `
-    -JarPath $anitorrentJar.FullName `
-    -Dependencies @(@{
-        GroupId = "org.openani.anitorrent"
-        ArtifactId = "anitorrent-native-desktop-jni"
-        Version = $AnitorrentVersion
-        Scope = "compile"
-    })
+if ($AnitorrentArtifacts) {
+    $anitorrentJar = Get-ChildItem -Path $AnitorrentArtifacts -Recurse -Filter "*windows-arm64*.jar" |
+        Select-Object -First 1
 
-Write-MavenArtifact `
-    -GroupId "org.openani.anitorrent" `
-    -ArtifactId "anitorrent-native-desktop" `
-    -Version $AnitorrentVersion `
-    -JarPath $anitorrentJar.FullName `
-    -Classifier "windows-arm64" `
-    -Dependencies @(@{
-        GroupId = "org.openani.anitorrent"
-        ArtifactId = "anitorrent-native-desktop-jni"
-        Version = $AnitorrentVersion
-        Scope = "compile"
-    })
+    if ($null -eq $anitorrentJar) {
+        throw "Could not find anitorrent Windows ARM64 jar in $AnitorrentArtifacts."
+    }
+
+    Write-MavenArtifact `
+        -GroupId "org.openani.anitorrent" `
+        -ArtifactId "anitorrent-native-desktop" `
+        -Version $AnitorrentVersion `
+        -JarPath $anitorrentJar.FullName `
+        -Dependencies @(@{
+            GroupId = "org.openani.anitorrent"
+            ArtifactId = "anitorrent-native-desktop-jni"
+            Version = $AnitorrentVersion
+            Scope = "compile"
+        })
+}
+
+if ($MediampArtifacts) {
+    $mediampJar = Get-ChildItem -Path $MediampArtifacts -Recurse -Filter "*windows-arm64*.jar" |
+        Select-Object -First 1
+
+    if ($null -eq $mediampJar) {
+        throw "Could not find mediamp Windows ARM64 jar in $MediampArtifacts."
+    }
+
+    Write-MavenArtifact `
+        -GroupId "org.openani.mediamp" `
+        -ArtifactId "mediamp-ffmpeg-runtime-windows-arm64" `
+        -Version $MediampVersion `
+        -JarPath $mediampJar.FullName
+}
+
+if ($AnitorrentArtifacts) {
+    Write-MavenArtifact `
+        -GroupId "org.openani.anitorrent" `
+        -ArtifactId "anitorrent-native-desktop" `
+        -Version $AnitorrentVersion `
+        -JarPath $anitorrentJar.FullName `
+        -Classifier "windows-arm64" `
+        -Dependencies @(@{
+            GroupId = "org.openani.anitorrent"
+            ArtifactId = "anitorrent-native-desktop-jni"
+            Version = $AnitorrentVersion
+            Scope = "compile"
+        })
+}

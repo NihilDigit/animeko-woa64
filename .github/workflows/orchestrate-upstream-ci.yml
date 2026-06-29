@@ -28,6 +28,21 @@ on:
         required: false
         default: ""
         type: string
+      mediamp_version:
+        description: "Maven version expected by animeko for org.openani.mediamp runtime"
+        required: true
+        default: "0.1.12"
+        type: string
+      mediamp_run_id:
+        description: "Existing open-ani/mediamp workflow run id containing mediamp-ffmpeg-runtime-windows-arm64"
+        required: true
+        default: "27870369642"
+        type: string
+      stage_mediamp:
+        description: "Stage upstream mediamp Windows ARM64 runtime into the mock Maven repository"
+        required: true
+        default: true
+        type: boolean
       run_anitorrent:
         description: "Trigger anitorrent and stage its Windows ARM64 runtime"
         required: true
@@ -70,6 +85,7 @@ jobs:
 
     env:
       ANITORRENT_REPO: NihilDigit/anitorrent
+      MEDIAMP_REPO: open-ani/mediamp
       ANIMEKO_REPO: NihilDigit/animeko
       WORKFLOW_FILE: build.yml
       MOCK_MAVEN_ARTIFACT: mock-maven-woa64
@@ -111,17 +127,36 @@ jobs:
             --name anitorrent-windows-arm64 `
             --dir artifacts/anitorrent
 
-      - name: Prepare mocked Maven repository
-        if: ${{ inputs.run_anitorrent }}
+      - name: Download mediamp artifact
+        if: ${{ inputs.stage_mediamp }}
         shell: pwsh
         run: |
-          ./.github/workflows/scripts/prepare-mock-maven.ps1 `
-            -AnitorrentArtifacts artifacts/anitorrent `
-            -OutputDirectory mock-maven `
-            -AnitorrentVersion "${{ inputs.anitorrent_version }}"
+          New-Item -ItemType Directory -Force -Path artifacts/mediamp | Out-Null
+          gh run download "${{ inputs.mediamp_run_id }}" `
+            --repo $env:MEDIAMP_REPO `
+            --name mediamp-ffmpeg-runtime-windows-arm64 `
+            --dir artifacts/mediamp
+
+      - name: Prepare mocked Maven repository
+        if: ${{ inputs.run_anitorrent || inputs.stage_mediamp }}
+        shell: pwsh
+        run: |
+          $prepareArgs = @{
+            OutputDirectory = "mock-maven"
+          }
+          if ("${{ inputs.run_anitorrent }}" -eq "true") {
+            $prepareArgs.AnitorrentArtifacts = "artifacts/anitorrent"
+            $prepareArgs.AnitorrentVersion = "${{ inputs.anitorrent_version }}"
+          }
+          if ("${{ inputs.stage_mediamp }}" -eq "true") {
+            $prepareArgs.MediampArtifacts = "artifacts/mediamp"
+            $prepareArgs.MediampVersion = "${{ inputs.mediamp_version }}"
+          }
+
+          ./.github/workflows/scripts/prepare-mock-maven.ps1 @prepareArgs
 
       - name: Upload mocked Maven repository
-        if: ${{ inputs.run_anitorrent }}
+        if: ${{ inputs.run_anitorrent || inputs.stage_mediamp }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MOCK_MAVEN_ARTIFACT }}
@@ -134,7 +169,7 @@ jobs:
         shell: pwsh
         run: |
           $fields = @()
-          if ("${{ inputs.run_anitorrent }}" -eq "true") {
+          if ("${{ inputs.run_anitorrent }}" -eq "true" -or "${{ inputs.stage_mediamp }}" -eq "true") {
             $fields += @(
               "mock_maven_repo=${{ github.repository }}",
               "mock_maven_run_id=${{ github.run_id }}",
