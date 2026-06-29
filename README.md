@@ -1,15 +1,14 @@
 # animeko-woa64
 
-WOA64 workspace for coordinating changes across the Animeko fork stack.
+WOA64 workspace for coordinating temporary Windows ARM64 Animeko builds.
 
 This repository intentionally tracks only submodule pointers and coordination
 files. The actual source trees are separate Git repositories:
 
 - `animeko` -> `git@github.com:NihilDigit/animeko.git`, branch `woa`
-- `mediamp` -> `git@github.com:NihilDigit/mediamp.git`, branch `woa`
-- `anitorrent` -> `git@github.com:NihilDigit/anitorrent.git`, branch `woa`
+- `anitorrent` -> `git@github.com:NihilDigit/anitorrent.git`, branch `pr/windows-arm64-native-runtime`
 
-Each submodule should stay on its own `woa` branch. Code changes made inside a
+Each submodule should stay on its configured branch. Code changes made inside a
 submodule are committed and pushed from that submodule repository, not from this
 meta repository. This repository records the exact commit combination that is
 known to work.
@@ -19,8 +18,7 @@ known to work.
 ```text
 animeko-woa64/
   animeko      # submodule: NihilDigit/animeko, branch woa
-  mediamp      # submodule: NihilDigit/mediamp, branch woa
-  anitorrent   # submodule: NihilDigit/anitorrent, branch woa
+  anitorrent   # submodule: NihilDigit/anitorrent, branch pr/windows-arm64-native-runtime
 ```
 
 ## Clone
@@ -37,7 +35,7 @@ git submodule update --init --recursive
 
 ## Update Submodules
 
-To move every submodule to the latest commit on its configured `woa` branch:
+To move every submodule to the latest commit on its configured branch:
 
 ```powershell
 git submodule update --remote --merge

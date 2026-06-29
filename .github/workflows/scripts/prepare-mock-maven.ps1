@@ -3,16 +3,11 @@ param(
     [string]$AnitorrentArtifacts,
 
     [Parameter(Mandatory = $true)]
-    [string]$MediampArtifacts,
-
-    [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
 
     [string]$AnimekoDirectory = "",
 
-    [string]$AnitorrentVersion = "",
-
-    [string]$MediampVersion = ""
+    [string]$AnitorrentVersion = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,23 +20,14 @@ function Read-AnimekoVersions {
 
     $versions = @{
         Anitorrent = ""
-        Mediamp = ""
     }
 
     $settings = Join-Path $Path "settings.gradle.kts"
-    $catalog = Join-Path $Path "gradle/libs.versions.toml"
 
     if (Test-Path $settings) {
         $match = Select-String -Path $settings -Pattern 'org\.openani\.anitorrent:catalog:([^"]+)' | Select-Object -First 1
         if ($match) {
             $versions.Anitorrent = $match.Matches[0].Groups[1].Value
-        }
-    }
-
-    if (Test-Path $catalog) {
-        $match = Select-String -Path $catalog -Pattern '^mediamp\s*=\s*"([^"]+)"' | Select-Object -First 1
-        if ($match) {
-            $versions.Mediamp = $match.Matches[0].Groups[1].Value
         }
     }
 
@@ -111,28 +97,17 @@ if ($AnimekoDirectory) {
     if (!$AnitorrentVersion) {
         $AnitorrentVersion = $animekoVersions.Anitorrent
     }
-    if (!$MediampVersion) {
-        $MediampVersion = $animekoVersions.Mediamp
-    }
 }
 
 if (!$AnitorrentVersion) {
     throw "AnitorrentVersion was not provided and could not be read from AnimekoDirectory."
 }
-if (!$MediampVersion) {
-    throw "MediampVersion was not provided and could not be read from AnimekoDirectory."
-}
 
 $anitorrentJar = Get-ChildItem -Path $AnitorrentArtifacts -Recurse -Filter "*windows-arm64*.jar" |
-    Select-Object -First 1
-$mediampJar = Get-ChildItem -Path $MediampArtifacts -Recurse -Filter "*windows-arm64*.jar" |
     Select-Object -First 1
 
 if ($null -eq $anitorrentJar) {
     throw "Could not find anitorrent Windows ARM64 jar in $AnitorrentArtifacts."
-}
-if ($null -eq $mediampJar) {
-    throw "Could not find mediamp Windows ARM64 jar in $MediampArtifacts."
 }
 
 Write-MavenArtifact `
@@ -159,9 +134,3 @@ Write-MavenArtifact `
         Version = $AnitorrentVersion
         Scope = "compile"
     })
-
-Write-MavenArtifact `
-    -GroupId "org.openani.mediamp" `
-    -ArtifactId "mediamp-ffmpeg-runtime-windows-arm64" `
-    -Version $MediampVersion `
-    -JarPath $mediampJar.FullName

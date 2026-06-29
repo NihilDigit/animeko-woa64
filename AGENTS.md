@@ -2,37 +2,33 @@
 
 ## Project Structure & Module Organization
 
-This root repository is the WOA64 coordination workspace. It should contain documentation, meta CI, helper scripts, and submodule pointers only. Product code belongs in the three forked submodules, all on `woa`:
+This root repository is the WOA64 coordination workspace. Keep product code in the forked submodules and use the root for documentation, meta CI, helper scripts, release artifacts, and submodule pointers only.
 
-- `anitorrent/`: native torrent/JNI runtime and Windows ARM64 native jar.
-- `mediamp/`: FFmpeg runtime packaging and Windows ARM64 runtime jar.
-- `animeko/`: desktop integration, JCEF/JBR wiring, and final app build.
+- `anitorrent/`: native torrent/JNI runtime. Clean upstream PR branch: `pr/windows-arm64-native-runtime`.
+- `animeko/`: final desktop integration and temporary WOA64 application build. Active workaround branch: `woa`.
+- `.github/workflows/`: meta orchestration and release workflows for temporary WOA64 builds.
+- `artifacts/`: ignored local downloads, unpacked builds, and release assets.
 
-Commit code in the owning submodule first, push its `woa` branch, then update the root submodule pointer. Do not copy upstream source trees into this repo.
+Do not copy upstream source trees into this repo. Commit code changes in the owning submodule, then update the root gitlink only when the root must pin that revision.
 
 ## Current Progress
 
-Current WOA64 MVP prerelease:
+Latest usable WOA64 release:
 
-- Release: `woa64-25846286824`
-- Asset: `Ani-woa64-25846286824-windows-aarch64-portable.zip`
-- SHA256: `92eef23b29fafc49219ecdd76146951710bbb3751991175f8ee5297ad0bb289e`
+- Release: `woa64-25848780226`
+- Asset: `Ani-woa64-25848780226-windows-aarch64-portable.zip`
+- SHA256: `0447ff411e85bdbf88c9d4b2522fbfecaa8155582cda312428914ef546f5c581`
 
-The three upstream PR branches are single squashed commits and have been force-pushed:
+Clean PR branches:
 
-- `anitorrent@woa`: `f5cadfeb` Windows ARM64 native runtime support plus minimal CI dispatch/artifact harness.
-- `mediamp@woa`: `138d6247` Windows ARM64 FFmpeg runtime target plus minimal CI dispatch/artifact harness.
-- `animeko@woa`: `bbebe92b` Windows ARM64 desktop build support plus temporary mock Maven consumption for orchestrated CI.
+- `anitorrent@pr/windows-arm64-native-runtime`: `f7ee4413`, single commit adding Windows ARM64 native runtime build and release publishing.
+- `mediamp` Windows ARM64 FFmpeg runtime support is upstream in `open-ani/mediamp@v0.1.12`; this meta repo no longer tracks a mediamp submodule.
 
-The root meta repo uses `WOA64 CI Orchestrator` as the active path. It can run the full chain or reuse existing run ids, and can publish a prerelease when `publish_release=true`.
+Temporary application branch:
 
-Current validation:
+- `animeko@woa`: based on upstream `v5.7.0`, with Windows ARM64 desktop build support, anitorrent mock Maven consumption, SQLite workaround, and final package verification.
 
-- Meta orchestrator run: `25846286824`
-- Reuses anitorrent run: `25842375087`
-- Reuses mediamp run: `25830726716`
-- Animeko run: `25846299790`
-- Result: build, package upload, AndroidX SQLite patch, desktop checks, Android host checks, and Windows ARM64 verify all succeeded.
+The clean PR branches must not contain meta-only `workflow_dispatch`, mock Maven, or `animeko-woa64` orchestration comments.
 
 ## Build, Test, and Development Commands
 
@@ -40,61 +36,52 @@ Refresh submodules:
 
 ```powershell
 git submodule update --init --recursive
-git submodule foreach git checkout woa
-git submodule foreach git pull --ff-only
 ```
 
-Regenerate CI after editing workflow Kotlin scripts:
+Regenerate workflow YAML after editing `src.main.kts`:
 
 ```powershell
 cd anitorrent; kotlin .github\workflows\src.main.kts
-cd mediamp; kotlin .github\workflows\src.main.kts
 cd animeko; kotlin .github\workflows\src.main.kts
 ```
 
-Validate YAML with:
+Validate generated YAML:
 
 ```powershell
-uvx --with pyyaml python -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/build.yml').read_text())"
+uvx --with pyyaml python -c "import yaml, pathlib; [yaml.safe_load(pathlib.Path(p).read_text()) for p in ['.github/workflows/build.yml','.github/workflows/release.yml'] if pathlib.Path(p).exists()]"
 ```
 
-Run the meta release path without rebuilding upstream repos:
+Useful checks:
 
 ```powershell
-gh workflow run orchestrate-upstream-ci.yml --repo NihilDigit/animeko-woa64 `
-  -f run_anitorrent=false -f run_mediamp=false -f run_animeko=true `
-  -f animeko_run_id=<successful-animeko-run-id> -f publish_release=true
+git diff --check
+gh run list --repo NihilDigit/anitorrent --branch pr/windows-arm64-native-runtime
 ```
 
 ## Coding Style & Constraints
 
 Minimize upstream diff. Do not upgrade dependency versions, Gradle plugins, toolchain helpers, or generated code unless WOA64 strictly requires it. Avoid opportunistic cleanup, hardening, or style churn.
 
-Do not harden temporary orchestration workarounds unless they block the active CI path. The `workflow_dispatch`, mock Maven, and dispatch-only gating code is expected to be deleted or reshaped before final upstream PRs, so avoid coupling new behavior to it.
+Keep code comments sparse. Put only durable maintenance facts in code, such as why a Windows ARM64 CI job skips full `check`. Put broader context, validation notes, OpenSSL/MSYS2 details, and known limitations in PR descriptions.
 
-Temporary CI plumbing must be annotated with:
+For temporary meta orchestration only, annotate removable CI plumbing with:
 
 ```text
 WOA64 orchestration harness
 ```
 
-This marks dispatch/mock/artifact code that should be removed or reshaped before final upstream PRs if it is not generally useful.
-
-Keep release artifacts out of git. Local downloads and zips belong under ignored `artifacts/`.
+Do not add that marker to clean upstream PR branches.
 
 ## Testing Guidelines
 
-Run `git diff --check` in each touched submodule. Prefer narrow Gradle tasks first, then use the meta orchestrator to exercise real GitHub runners. When a CI failure reveals a true PR issue, amend the relevant submodule’s single `woa` commit and force-push with `--force-with-lease`.
+Run `git diff --check` in each touched submodule. Regenerate workflow YAML and parse it before pushing. Prefer narrow native/runtime tasks locally, then verify with GitHub-hosted Windows ARM64 runners.
 
-Packaged Animeko verify currently includes Windows ARM64 smoke tests for:
+Validated local tasks:
 
-- `anitorrent-load-test`
-- `anitorrent-session-smoke-test`
-- `mediamp-ffmpeg-smoke-test`
-- `sqlite-bundled-load-test`
+- anitorrent: `buildAnitorrent copyNativeJarForCurrentPlatform`
 
-SQLite source of truth is now Animeko CI only: `ci-helper/sqlite-woa64/patch-sqlite-bundled-windows-arm64.ps1` downloads pinned SQLite amalgamation plus AndroidX `sqlite_bindings.cpp`, verifies SHA256, compiles `sqliteJni.dll`, and injects `natives/windows_arm64/sqliteJni.dll`. The meta repo no longer carries or applies a prebuilt SQLite DLL.
+Animeko packaged verify currently covers anitorrent load/session smoke tests, mediamp FFmpeg smoke test, and SQLite bundled load test.
 
 ## Commit & PR Guidelines
 
-Keep one logical commit per upstream PR branch. Root commits should only update docs, meta workflows, scripts, or submodule gitlinks. PR descriptions should call out runtime risks: JCEF/JBR, VLC, FFmpeg, SQLite JNI, OpenSSL/vcpkg, MSYS2, and Windows ARM64 runner assumptions.
+Keep one logical commit per upstream PR branch and amend with `--force-with-lease` while preparing. PR descriptions should explain why Windows ARM64 jobs build runtime artifacts only, and call out runner/toolchain assumptions: vcpkg/OpenSSL for anitorrent and JBR/JCEF/SQLite/VLC risks for Animeko.

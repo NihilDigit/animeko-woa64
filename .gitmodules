@@ -2,11 +2,7 @@
 	path = animeko
 	url = git@github.com:NihilDigit/animeko.git
 	branch = woa
-[submodule "mediamp"]
-	path = mediamp
-	url = git@github.com:NihilDigit/mediamp.git
-	branch = woa
 [submodule "anitorrent"]
 	path = anitorrent
 	url = git@github.com:NihilDigit/anitorrent.git
-	branch = woa
+	branch = pr/windows-arm64-native-runtime

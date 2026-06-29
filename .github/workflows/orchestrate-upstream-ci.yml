@@ -6,17 +6,17 @@ on:
       anitorrent_ref:
         description: "anitorrent ref to build"
         required: true
-        default: "woa"
-        type: string
-      mediamp_ref:
-        description: "mediamp ref to build"
-        required: true
-        default: "woa"
+        default: "pr/windows-arm64-native-runtime"
         type: string
       animeko_ref:
         description: "animeko ref to build"
         required: true
         default: "woa"
+        type: string
+      release_version:
+        description: "Animeko version used for readable release names"
+        required: true
+        default: "5.7.0"
         type: string
       anitorrent_version:
         description: "Maven version expected by animeko for org.openani.anitorrent:anitorrent-native-desktop"
@@ -28,28 +28,13 @@ on:
         required: false
         default: ""
         type: string
-      mediamp_version:
-        description: "Maven version expected by animeko for org.openani.mediamp runtime"
-        required: true
-        default: "0.1.11"
-        type: string
-      mediamp_run_id:
-        description: "Existing mediamp workflow run id to reuse instead of dispatching"
-        required: false
-        default: ""
-        type: string
       run_anitorrent:
         description: "Trigger anitorrent and stage its Windows ARM64 runtime"
         required: true
         default: true
         type: boolean
-      run_mediamp:
-        description: "Trigger mediamp and stage its Windows ARM64 runtime"
-        required: true
-        default: true
-        type: boolean
       run_animeko:
-        description: "Trigger animeko with the staged mock Maven repository"
+        description: "Trigger animeko with the staged anitorrent mock Maven repository when needed"
         required: true
         default: true
         type: boolean
@@ -64,12 +49,12 @@ on:
         default: false
         type: boolean
       release_tag:
-        description: "Release tag to create when publish_release is enabled; defaults to woa64-<run_id>"
+        description: "Release tag to create when publish_release is enabled; defaults to v<release_version>-woa64"
         required: false
         default: ""
         type: string
       release_title:
-        description: "Release title to use when publish_release is enabled"
+        description: "Release title to use when publish_release is enabled; defaults to <release_version> WoA64"
         required: false
         default: ""
         type: string
@@ -85,7 +70,6 @@ jobs:
 
     env:
       ANITORRENT_REPO: NihilDigit/anitorrent
-      MEDIAMP_REPO: NihilDigit/mediamp
       ANIMEKO_REPO: NihilDigit/animeko
       WORKFLOW_FILE: build.yml
       MOCK_MAVEN_ARTIFACT: mock-maven-woa64
@@ -127,44 +111,17 @@ jobs:
             --name anitorrent-windows-arm64 `
             --dir artifacts/anitorrent
 
-      - name: Trigger mediamp CI
-        id: mediamp
-        if: ${{ inputs.run_mediamp && inputs.mediamp_run_id == '' }}
-        shell: pwsh
-        run: |
-          $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
-            -Repo $env:MEDIAMP_REPO `
-            -Workflow $env:WORKFLOW_FILE `
-            -Ref "${{ inputs.mediamp_ref }}"
-          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-      - name: Download mediamp artifact
-        if: ${{ inputs.run_mediamp }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts/mediamp | Out-Null
-          $runId = "${{ inputs.mediamp_run_id }}"
-          if ([string]::IsNullOrWhiteSpace($runId)) {
-            $runId = "${{ steps.mediamp.outputs.run_id }}"
-          }
-          gh run download "$runId" `
-            --repo $env:MEDIAMP_REPO `
-            --name mediamp-ffmpeg-runtime-windows-arm64 `
-            --dir artifacts/mediamp
-
       - name: Prepare mocked Maven repository
-        if: ${{ inputs.run_anitorrent && inputs.run_mediamp }}
+        if: ${{ inputs.run_anitorrent }}
         shell: pwsh
         run: |
           ./.github/workflows/scripts/prepare-mock-maven.ps1 `
             -AnitorrentArtifacts artifacts/anitorrent `
-            -MediampArtifacts artifacts/mediamp `
             -OutputDirectory mock-maven `
-            -AnitorrentVersion "${{ inputs.anitorrent_version }}" `
-            -MediampVersion "${{ inputs.mediamp_version }}"
+            -AnitorrentVersion "${{ inputs.anitorrent_version }}"
 
       - name: Upload mocked Maven repository
-        if: ${{ inputs.run_anitorrent && inputs.run_mediamp }}
+        if: ${{ inputs.run_anitorrent }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.MOCK_MAVEN_ARTIFACT }}
@@ -176,15 +133,25 @@ jobs:
         if: ${{ inputs.run_animeko && inputs.animeko_run_id == '' }}
         shell: pwsh
         run: |
-          $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 `
-            -Repo $env:ANIMEKO_REPO `
-            -Workflow $env:WORKFLOW_FILE `
-            -Ref "${{ inputs.animeko_ref }}" `
-            -Field @(
+          $fields = @()
+          if ("${{ inputs.run_anitorrent }}" -eq "true") {
+            $fields += @(
               "mock_maven_repo=${{ github.repository }}",
               "mock_maven_run_id=${{ github.run_id }}",
               "mock_maven_artifact=$env:MOCK_MAVEN_ARTIFACT"
             )
+          }
+
+          $dispatchArgs = @{
+            Repo = $env:ANIMEKO_REPO
+            Workflow = $env:WORKFLOW_FILE
+            Ref = "${{ inputs.animeko_ref }}"
+          }
+          if ($fields.Count -gt 0) {
+            $dispatchArgs.Field = $fields
+          }
+
+          $runId = .\.github\workflows\scripts\dispatch-and-wait.ps1 @dispatchArgs
           "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Resolve Animeko run id
@@ -215,27 +182,32 @@ jobs:
         if: ${{ inputs.run_animeko && inputs.publish_release }}
         shell: bash
         run: |
+          version="${{ inputs.release_version }}"
           cd artifacts/animeko
-          zip -r -q "../Ani-woa64-${GITHUB_RUN_ID}-windows-aarch64-portable.zip" Ani
+          zip -r -q "../Ani-${version}-woa64-windows-aarch64-portable.zip" Ani
 
       - name: Publish Animeko Windows ARM64 prerelease
         if: ${{ inputs.run_animeko && inputs.publish_release }}
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${{ inputs.release_version }}"
+          $upstreamTag = if ($version.StartsWith("v")) { $version } else { "v$version" }
+
           $tag = "${{ inputs.release_tag }}"
           if ([string]::IsNullOrWhiteSpace($tag)) {
-            $tag = "woa64-${{ github.run_id }}"
+            $tag = "$upstreamTag-woa64"
           }
 
           $title = "${{ inputs.release_title }}"
           if ([string]::IsNullOrWhiteSpace($title)) {
-            $title = "Animeko WoA64 $tag"
+            $title = "$version WoA64"
           }
 
-          $asset = "artifacts/Ani-woa64-${{ github.run_id }}-windows-aarch64-portable.zip"
+          $asset = "artifacts/Ani-$version-woa64-windows-aarch64-portable.zip"
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash
           $notes = @"
-          Windows on ARM64 MVP build for Animeko.
+          Windows ARM64 portable build for Animeko $version.
 
           Source runs:
           - Meta orchestrator: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -243,21 +215,26 @@ jobs:
 
           Source refs:
           - anitorrent: ${{ inputs.anitorrent_ref }}
-          - mediamp: ${{ inputs.mediamp_ref }}
-          - animeko: ${{ inputs.animeko_ref }}
+          - animeko: ${{ inputs.animeko_ref }} based on upstream $upstreamTag
+          - mediamp: upstream artifacts resolved by Animeko
 
           Validation:
           - Animeko WoA64 build completed successfully.
           - Desktop package uploaded successfully.
-          - Verification job downloaded the Windows AArch64 portable artifact and ran the packaged native smoke tests.
+          - Verification job downloaded the Windows ARM64 portable artifact and ran the packaged native smoke tests.
 
           SHA256:
           $hash
           "@
 
-          gh release create $tag $asset `
-            --repo "${{ github.repository }}" `
-            --target "${{ github.sha }}" `
-            --title $title `
-            --notes $notes `
-            --prerelease
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --clobber --repo "${{ github.repository }}"
+          } else {
+            gh release create $tag $asset `
+              --repo "${{ github.repository }}" `
+              --target "${{ github.sha }}" `
+              --title $title `
+              --notes $notes `
+              --prerelease
+          }
