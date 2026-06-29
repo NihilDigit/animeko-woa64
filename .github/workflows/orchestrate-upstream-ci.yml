@@ -6,7 +6,7 @@ on:
       anitorrent_ref:
         description: "anitorrent ref to build"
         required: true
-        default: "pr/windows-arm64-native-runtime"
+        default: "woa"
         type: string
       animeko_ref:
         description: "animeko ref to build"
